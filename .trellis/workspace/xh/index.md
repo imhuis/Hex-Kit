@@ -1,4 +1,4 @@
-# Workspace Index - xinghe
+# Workspace Index - xh
 
 > Journal tracking for AI development sessions.
 

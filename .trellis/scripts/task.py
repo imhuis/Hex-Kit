@@ -661,11 +661,6 @@ def main() -> int:
         help="Create the task without making it active in this session",
     )
     p_create.add_argument(
-        "--no-github-issue",
-        action="store_true",
-        help="Skip automatic GitHub issue creation for a small or temporary task",
-    )
-    p_create.add_argument(
         "--force",
         action="store_true",
         help="Overwrite task.json when the task directory already exists",

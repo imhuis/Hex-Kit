@@ -50,15 +50,6 @@ max_journal_lines: 2000
 #   after_archive:
 #     - "echo 'Task archived'"
 
-# GitHub issue lifecycle. Requires GITHUB_TOKEN or GH_TOKEN with Issues read/write
-# access. This repository runs Python on Windows through the `py -3` launcher;
-# use `python3` in these hook commands on POSIX systems.
-hooks:
-  after_create:
-    - "py -3 .trellis/scripts/github_issue.py create"
-  after_archive:
-    - "py -3 .trellis/scripts/github_issue.py complete"
-
 #-------------------------------------------------------------------------------
 # Monorepo / Packages
 #-------------------------------------------------------------------------------
