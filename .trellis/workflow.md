@@ -147,15 +147,16 @@ python ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed g
 ## Phase Index
 
 ```
-Phase 1: Plan    → classify, get task-creation consent, then write planning artifacts
+Phase 1: Plan    → classify, get task-creation consent, then write planning artifacts and sync eligible GitHub issues
 Phase 2: Execute → implement only after task status is in_progress
-Phase 3: Finish  → verify, update spec, commit, and wrap up
+Phase 3: Finish  → verify, update spec, commit, record acceptance, close the issue, and wrap up
 ```
 
 ### Request Triage
 
 - Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
 - Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
+- Tiny or temporary tasks may opt out of GitHub issue creation with `--no-github-issue`; other tasks create an issue through the `after_create` hook.
 - User approval to create a task is not approval to start implementation. Planning still happens first.
 
 ### Planning Artifacts
@@ -180,6 +181,7 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
 Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
 Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+When creating an approved task, create its GitHub issue by default; use `--no-github-issue` only for tiny or temporary work.
 [/workflow-state:no_task]
 
 <!-- Per-turn breadcrumb: shown when the active task record cannot be read. -->
@@ -203,6 +205,7 @@ Preserve existing task fields and artifacts. If the correct status cannot be det
 [workflow-state:planning]
 Load `trellis-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+New tasks create a GitHub issue by default; use `--no-github-issue` only for tiny or temporary work. If issue creation is pending, continue locally and record the retry command.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
 [/workflow-state:planning]
@@ -216,6 +219,7 @@ Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research mani
 [workflow-state:planning-inline]
 Load `trellis-brainstorm`; stay in planning.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+New tasks create a GitHub issue by default; use `--no-github-issue` only for tiny or temporary work. If issue creation is pending, continue locally and record the retry command.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-before-dev`.
 [/workflow-state:planning-inline]
@@ -235,7 +239,7 @@ Sub-agent dispatch protocol applies to all platforms and all sub-agents, includi
 
 [workflow-state:in_progress]
 Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
-Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> acceptance report + `github_issue.py accept` -> `/trellis:finish-work` (archive posts the report and closes the issue).
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
@@ -246,7 +250,7 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
      instead of dispatching sub-agents. -->
 
 [workflow-state:in_progress-inline]
-Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> acceptance report + `github_issue.py accept` -> `/trellis:finish-work` (archive posts the report and closes the issue).
 Do not dispatch implement/check sub-agents in inline mode.
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
 [/workflow-state:in_progress-inline]
@@ -327,6 +331,12 @@ Create the task directory only after task-creation consent. The command sets sta
 ```bash
 python ./.trellis/scripts/task.py create "<task title>" --slug <name>
 ```
+
+Eligible tasks create a GitHub issue automatically through the `after_create`
+hook. Set `GITHUB_TOKEN` or `GH_TOKEN` to a token with Issues read/write
+access. Use `--no-github-issue` for tiny or temporary work. If GitHub is
+unavailable, task creation continues and the issue sync remains pending; retry
+with `python ./.trellis/scripts/github_issue.py retry <task-dir>`.
 
 `--slug` is the human-readable name only. Do **not** include the `MM-DD-` date prefix; `task.py create` adds that prefix automatically.
 
@@ -648,6 +658,24 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 - Never push to remote in this step.
 - If the user wants different message wording but accepts the file grouping, edit the message and re-confirm once — but if they reject the grouping, exit to manual mode.
 - The batched plan is one prompt; do not prompt per commit.
+
+**GitHub acceptance gate, before task archive**: after the final quality review
+passes and the implementation commit exists, write a concise report to
+`{TASK_DIR}/acceptance-report.md` listing checks and outcomes. Record the
+accepted commit and report:
+
+```bash
+python ./.trellis/scripts/github_issue.py accept <task-dir> --commit <full-commit-sha> --report acceptance-report.md --quality-passed
+```
+
+The command verifies that the commit is in the current branch history and the
+report is non-empty and inside the task directory. Archiving a task with a
+linked issue is refused until this record is valid. The `after_archive` hook
+posts the report and commit link as an issue comment, then closes the issue.
+If GitHub sync fails, local work remains complete; retry with
+`python ./.trellis/scripts/github_issue.py retry <archived-task-dir>`. Tasks
+without an issue, including explicit exemptions, are not blocked by the issue
+gate.
 
 #### 3.5 Wrap-up reminder
 

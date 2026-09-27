@@ -357,6 +357,8 @@ def cmd_create(args: argparse.Namespace) -> int:
     meta = _parse_meta_pairs(getattr(args, "meta", None))
     if meta is None:
         return 1
+    if getattr(args, "no_github_issue", False):
+        meta["githubIssue"] = {"status": "exempt", "exempt": True}
 
     # Validate --package (CLI source: fail-fast)
     package: str | None = getattr(args, "package", None)
@@ -684,6 +686,8 @@ def cmd_create(args: argparse.Namespace) -> int:
     print("", file=sys.stderr)
     print(colored("Next steps:", Colors.BLUE), file=sys.stderr)
     print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
+    if not getattr(args, "no_github_issue", False):
+        print("  - GitHub issue creation is attempted by the after_create hook; retry if it remains pending", file=sys.stderr)
     print("  - Lightweight task: PRD-only is valid", file=sys.stderr)
     print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
     if created_jsonl:
@@ -1334,6 +1338,30 @@ def cmd_archive(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         else:
+            meta = data.get("meta")
+            github_issue = meta.get("githubIssue") if isinstance(meta, dict) else None
+            acceptance_problem = None
+            if isinstance(github_issue, dict) and github_issue.get("number"):
+                try:
+                    from github_issue import validate_archive_acceptance
+                    acceptance_problem = validate_archive_acceptance(task_json_path, data)
+                except Exception as exc:
+                    acceptance_problem = f"GitHub issue acceptance check failed ({type(exc).__name__})"
+            if acceptance_problem:
+                print(
+                    colored(
+                        f"Error: refusing to archive '{task_name}': {acceptance_problem}.",
+                        Colors.RED,
+                    ),
+                    file=sys.stderr,
+                )
+                print(
+                    "Record an accepted commit and report after quality review with "
+                    "github_issue.py accept, or retry GitHub synchronization if the issue is pending.",
+                    file=sys.stderr,
+                )
+                return 1
+
             # Before any mutation: branch metadata is unrecoverable once the
             # task leaves the active tree. Stale branches only warn.
             if not _validate_branch_metadata(
