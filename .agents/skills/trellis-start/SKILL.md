@@ -47,7 +47,7 @@ From Step 1 you know the current task and status. Check the task directory:
   ```bash
   py -3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform codex
   ```
-- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
+- **No active task** → follow Request Triage in `.trellis/workflow.md`: pure consultation, read-only analysis, and small scoped edits that can be completed and verified this turn proceed directly without task-creation questions. If the user explicitly requests tracking or the work needs sustained tracking or multi-step implementation, obtain task-creation consent if not already given; complex work enters planning. If the user declines task creation, follow the workflow's scope guidance.
 
 ---
 

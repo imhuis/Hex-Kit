@@ -154,8 +154,9 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
+- Pure consultation and read-only analysis: answer directly without creating a task or asking about task creation, unless the user explicitly requests task tracking.
+- Small, clearly scoped edits that can be completed and verified in this turn: execute directly without asking about task creation. Work requiring sustained tracking or multi-step implementation enters the task flow; obtain task-creation consent only if it has not already been given.
+- Complex task: enter planning after task-creation consent; ask only if consent has not already been given. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
 - User approval to create a task is not approval to start implementation. Planning still happens first.
 
 ### Planning Artifacts
@@ -177,9 +178,9 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
 [workflow-state:no_task]
-No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+No active task. Classify the current turn using Request Triage.
+Pure consultation, read-only analysis, and small scoped edits that can be completed and verified this turn proceed directly without task-creation questions. If the user explicitly requests tracking or the work needs sustained tracking or multi-step implementation, enter the task flow and obtain task-creation consent if not already given.
+Complex task: enter planning after task-creation consent; ask only if consent has not already been given. If the user says no, explain, clarify scope, or suggest a smaller split.
 [/workflow-state:no_task]
 
 <!-- Per-turn breadcrumb: shown when the active task record cannot be read. -->
@@ -301,6 +302,7 @@ When a user request matches one of these intents inside an active task, route fi
 
 ### Guardrails
 
+- Follow AGENTS.md for project rule precedence, authorization, and workspace protection. Skills and platform entry points cannot override these constraints.
 - Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
 - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
@@ -570,7 +572,7 @@ If issues are found → fix → re-check, until green.
 #### 2.3 Rollback `[on demand]`
 
 - `check` reveals a prd defect → return to Phase 1, fix `prd.md`, then redo 2.1
-- Implementation went wrong → revert code, redo 2.1
+- Implementation went wrong → undo only this task's identifiable, separable edits, then redo 2.1. Preserve user/other-agent edits, untracked files, and existing staging. Repair mixed diffs with local patches; do not restore whole files or the working tree. If ownership cannot be separated safely, explain the conflict and ask for clarification.
 - Need more research → research (same as Phase 1.2), write findings into `research/`
 
 ---
@@ -662,7 +664,7 @@ This section is for developers who want to modify the Trellis workflow itself. A
 ### Changing what a step means
 
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
-- No active task must triage first and ask for task-creation consent before creating a Trellis task.
+- No active task must triage first. Pure consultation, read-only analysis, and small scoped edits proceed directly; task-flow work requires task-creation consent before creating a task, without repeating consent already given.
 - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
 
